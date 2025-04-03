@@ -29,16 +29,18 @@ __global__ void reduce7(T*input, T*output){
     T warp_sum = shmem[tid];
     warp_sum = warp_reduce_sum<T>(warp_sum);
     __shared__ T shmem2[warp_num];
+    // 每个warp内第0号线程的结果
     if(lane_id==0){
-        shmem2[warp_id] = warp_num;
+        shmem2[warp_id] = warp_sum;
     }
-    T sum = shmem2[warp_id];
+    __syncthreads();
     // 只有第一个warp进行reduce
     if(warp_id==0){
-        sum = warp_reduce_sum<T>(sum);
+        warp_sum = (lane_id<warp_num)? shmem2[lane_id]:static_cast<T>(0);
+        warp_sum = warp_reduce_sum<T>(warp_sum);
     }
     if(tid==0){
-        output[blockIdx.x] = sum;
+        output[blockIdx.x] = warp_sum;
     }
 }
 
@@ -51,7 +53,7 @@ bool check(float *out,float *res,int n){
 }
 
 int main(){
-    const int N=32*1024*1024;
+    const int N=32*1024*1024; // 32M data
     float *a=(float *)malloc(N*sizeof(float));
     float *d_a;
     cudaMalloc((void **)&d_a,N*sizeof(float));
@@ -91,7 +93,7 @@ int main(){
     else{
         printf("the ans is wrong\n");
         for(int i=0;i<block_num;i++){
-            printf("%lf ",out[i]);
+            printf("%lf %lf \n",out[i], res[i]);
         }
         printf("\n");
     }

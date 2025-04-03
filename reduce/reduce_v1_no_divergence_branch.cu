@@ -8,28 +8,25 @@
 #define THREAD_PER_BLOCK 256
 
 // bank conflict
-__global__ void reduce1(float *d_in,float *d_out){
-    __shared__ float sdata[THREAD_PER_BLOCK];
-
-    // each thread loads one element from global to shared mem
-    unsigned int tid = threadIdx.x;
-    unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
-    sdata[tid] = d_in[i];
+template<typename T>
+__global__ void reduce1(T* input, T* output){
+    __shared__ T shmem[THREAD_PER_BLOCK];
+    int tid = threadIdx.x;
+    int src_i = blockDim.x*blockIdx.x + threadIdx.x;
+    shmem[tid] = input[src_i];
+    int warp_size = 128 / sizeof(T);
     __syncthreads();
-
-    // do reduction in shared mem
-    for(unsigned int s=1; s < blockDim.x; s *= 2) {
-        int index = 2 * s * tid;
-        if (index < blockDim.x) {
-            sdata[index] += sdata[index + s];
+    for(int i=blockDim.x/2; i>=1; i>>=1){
+        if(tid < i){
+            shmem[tid] += shmem[tid+i];
         }
-        __syncthreads();
+        // i<=warp_size的时候，只有warp0在工作，不需要同步其他warp内的线程
+        if(i>warp_size){
+            __syncthreads();
+        }
     }
-
-    // write result for this block to global mem
-    if (tid == 0) d_out[blockIdx.x] = sdata[0];
+    if(tid==0) output[blockIdx.x] = shmem[tid];
 }
-
 bool check(float *out,float *res,int n){
     for(int i=0;i<n;i++){
         if(out[i]!=res[i])
@@ -67,7 +64,7 @@ int main(){
     dim3 Grid( N/THREAD_PER_BLOCK,1);
     dim3 Block( THREAD_PER_BLOCK,1);
 
-    reduce1<<<Grid,Block>>>(d_a,d_out);
+    reduce1<float><<<Grid,Block>>>(d_a,d_out);
 
     cudaMemcpy(out,d_out,block_num*sizeof(float),cudaMemcpyDeviceToHost);
 
