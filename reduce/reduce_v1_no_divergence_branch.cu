@@ -29,7 +29,7 @@ __global__ void reduce1(T* input, T* output){
 }
 bool check(float *out,float *res,int n){
     for(int i=0;i<n;i++){
-        if(out[i]!=res[i])
+        if((out[i]-res[i])>1e-3)
             return false;
     }
     return true;
@@ -47,8 +47,14 @@ int main(){
     cudaMalloc((void **)&d_out,(N/THREAD_PER_BLOCK)*sizeof(float));
     float *res=(float *)malloc((N/THREAD_PER_BLOCK)*sizeof(float));
 
+    std::random_device rd;          // 用于获得随机种子
+    std::mt19937 gen(rd());         // Mersenne Twister 生成器
+
+    // 定义均匀分布，生成 [0.0, 1.0) 之间的随机浮点数
+    std::uniform_real_distribution<float> dis(0.0f, 1.0f);
+
     for(int i=0;i<N;i++){
-        a[i]=1;
+        a[i]=dis(gen);;
     }
 
     for(int i=0;i<block_num;i++){
@@ -72,7 +78,8 @@ int main(){
     else{
         printf("the ans is wrong\n");
         for(int i=0;i<block_num;i++){
-            printf("%lf ",out[i]);
+            if(i>10) break;
+            printf("%lf %lf \n",out[i], res[i]);
         }
         printf("\n");
     }
